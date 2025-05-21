@@ -65,25 +65,35 @@
 /*  SUCH DAMAGE.                                                            */
 /****************************************************************************/
 
-#include "sail_failure.h"
+#include <sail_failure.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdio.h>
+#include <stdlib.h>
 
-void sail_match_failure(const_sail_string msg)
+void sail_match_failure(const char *message)
 {
-  fprintf(stderr, "Pattern match failure in %s\n", msg);
-  exit(EXIT_FAILURE);
-}
-
-unit sail_assert(bool b, const_sail_string msg)
-{
-  if (b) return UNIT;
-  fprintf(stderr, "Assertion failed: %s\n", msg);
-  exit(EXIT_FAILURE);
-}
-
-#ifdef __cplusplus
-}
+     fprintf(stderr, "Match failure: %s\n", message);
+#ifndef SAIL_NO_FAILURE
+     exit(EXIT_FAILURE);
 #endif
+}
+
+void sail_failure(const char *message)
+{
+     fprintf(stderr, "Failure: %s\n", message);
+#ifndef SAIL_NO_FAILURE
+     exit(EXIT_FAILURE);
+#endif
+}
+
+int sail_assert(bool result, const char *message)
+{
+     if (!result) {
+          fprintf(stderr, "Assert failed: %s\n", message);
+#ifndef SAIL_NO_FAILURE
+          exit(EXIT_FAILURE);
+#endif
+          return 0;
+     }
+     return 0;
+}

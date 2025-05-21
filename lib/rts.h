@@ -107,6 +107,16 @@ unit wakeup_request(const unit u);
 bool sleeping(const unit u);
 
 /* ***** Memory builtins ***** */
+#define SAIL_MEMORY_SIZE 0x2000
+
+struct memory_buffer {
+  uint8_t buffer[SAIL_MEMORY_SIZE];
+  bool mask[SAIL_MEMORY_SIZE];
+  uint64_t size;
+};
+
+extern struct memory_buffer sail_memory;
+extern struct memory_buffer sail_tags;
 
 void write_mem(uint64_t, uint64_t);
 uint64_t read_mem(uint64_t);
@@ -114,15 +124,15 @@ uint64_t read_mem(uint64_t);
 // These memory builtins are intended to match the semantics for the
 // __ReadRAM and __WriteRAM functions in ASL.
 
-bool write_ram(const mpz_t addr_size,     // Either 32 or 64
-	       const mpz_t data_size_mpz, // Number of bytes
+bool write_ram(const sail_int addr_size,     // Either 32 or 64
+	       const sail_int data_size_mpz, // Number of bytes
 	       const lbits hex_ram,       // Currently unused
 	       const lbits addr_bv,
 	       const lbits data);
 
 void read_ram(lbits *data,
-	      const mpz_t addr_size,
-	      const mpz_t data_size_mpz,
+	      const sail_int addr_size,
+	      const sail_int data_size_mpz,
 	      const lbits hex_ram,
 	      const lbits addr_bv);
 
@@ -135,48 +145,44 @@ bool read_tag_bool(const fbits);
 unit emulator_write_tag(const uint64_t addr_size, const sbits addr, const bool tag);
 bool emulator_read_tag(const uint64_t addr_size, const sbits addr);
 
-void platform_read_mem(lbits *data,
-                       const int read_kind,
-                       const uint64_t addr_size,
+lbits platform_read_mem(const int read_kind,
+                       const int64_t addr_size,
                        const sbits addr,
-                       const mpz_t n);
+                       const sail_int n);
 unit platform_write_mem_ea(const int write_kind,
-                           const uint64_t addr_size,
+                           const int64_t addr_size,
                            const sbits addr,
-                           const mpz_t n);
+                           const sail_int n);
 bool platform_write_mem(const int write_kind,
-                        const uint64_t addr_size,
+                        const int64_t addr_size,
                         const sbits addr,
-                        const mpz_t n,
+                        const sail_int n,
                         const lbits data);
 bool platform_excl_res(const unit unit);
 unit platform_barrier();
 
 /* ***** New concurrency interface primitives ***** */
 
-void emulator_read_mem(lbits *data,
-                       const uint64_t addr_size,
-                       const sbits addr,
-                       const mpz_t n);
-
-void emulator_read_mem_ifetch(lbits *data,
-                              const uint64_t addr_size,
-                              const sbits addr,
-                              const mpz_t n);
-
-void emulator_read_mem_exclusive(lbits *data,
-                                 const uint64_t addr_size,
-                                 const sbits addr,
-                                 const mpz_t n);
-
-bool emulator_write_mem(const uint64_t addr_size,
+lbits emulator_read_mem(const int64_t addr_size, 
                         const sbits addr,
-                        const mpz_t n,
+                        const sail_int n);
+
+lbits emulator_read_mem_ifetch(const int64_t addr_size,
+                               const sbits addr,
+                               const sail_int n);
+
+lbits emulator_read_mem_exclusive(const int64_t addr_size,
+                                  const sbits addr,
+                                  const sail_int n);
+
+bool emulator_write_mem(const int64_t addr_size,
+                        const sbits addr,
+                        const sail_int n,
                         const lbits data);
 
-bool emulator_write_mem_exclusive(const uint64_t addr_size,
+bool emulator_write_mem_exclusive(const int64_t addr_size,
                                   const sbits addr,
-                                  const mpz_t n,
+                                  const sail_int n,
                                   const lbits data);
 
 unit load_raw(fbits addr, const_sail_string file);
@@ -244,8 +250,8 @@ void get_cycle_count(sail_int *rop, const unit);
  * Functions to get info from ELF files.
  */
 
-void elf_entry(sail_int *rop, const unit u);
-void elf_tohost(sail_int *rop, const unit u);
+sail_int elf_entry(const unit u);
+sail_int elf_tohost(const unit u);
 
 int process_arguments(int, char**);
 

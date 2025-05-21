@@ -65,29 +65,25 @@
 /*  SUCH DAMAGE.                                                            */
 /****************************************************************************/
 
-#ifndef SAIL_FAILURE_H
-#define SAIL_FAILURE_H
+#ifndef __SAIL_FAILURE__
+#define __SAIL_FAILURE__
 
-#include "sail.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdbool.h>
 
 /*
- * This function should be called whenever a pattern match failure
- * occurs. Pattern match failures are always fatal.
+ * Called when some builtin hits an unexpected case, such as overflow
+ * when using 64- or 128-bit integers.
  */
-void sail_match_failure(const_sail_string msg);
+void sail_failure(const char *message);
 
 /*
- * sail_assert implements the assert construct in Sail. If any
- * assertion fails we immediately exit the model.
+ * Called for pattern match failures
  */
-unit sail_assert(bool b, const_sail_string msg);
+void sail_match_failure(const char *message);
 
-#ifdef __cplusplus
-}
-#endif
+/*
+ * Implements the Sail assert construct
+ */
+int sail_assert(bool result, const char *message);
 
 #endif

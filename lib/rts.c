@@ -78,8 +78,6 @@
 extern "C" {
 #endif
 
-extern void (*sail_rts_set_coverage_file)(const char *);
-
 static uint64_t g_elf_entry;
 uint64_t g_cycle_count = 0;
 static uint64_t g_cycle_limit;
@@ -121,108 +119,24 @@ bool sleeping(const unit u)
 
 /* ***** Sail memory builtins ***** */
 
-/*
- * We organise memory available to the sail model into a linked list
- * of dynamically allocated MASK + 1 size blocks.
- */
-struct block {
-  uint64_t block_id;
-  uint8_t *mem;
-  struct block *next;
-};
+struct memory_buffer sail_memory;
+struct memory_buffer sail_tags;
 
-struct block *sail_memory = NULL;
-
-struct tag_block {
-  uint64_t block_id;
-  bool *mem;
-  struct tag_block *next;
-};
-
-struct tag_block *sail_tags = NULL;
-
-/*
- * Must be one less than a power of two.
- */
-uint64_t MASK = 0xFFFFFFul;
-
-/*
- * All sail vectors are at least 64-bits, but only the bottom 8 bits
- * are used in the second argument.
- */
 void write_mem(uint64_t address, uint64_t byte)
 {
-  uint64_t mask = address & ~MASK;
-  uint64_t offset = address & MASK;
-
-  struct block *current = sail_memory;
-
-  while (current != NULL) {
-    if (current->block_id == mask) {
-      current->mem[offset] = (uint8_t) byte;
-      return;
-    } else {
-      current = current->next;
-    }
-  }
-
-  /*
-   * If we couldn't find a block matching the mask, allocate a new
-   * one, write the byte, and put it at the front of the block list.
-   */
-  struct block *new_block = (struct block *)malloc(sizeof(struct block));
-  new_block->block_id = mask;
-  new_block->mem = (uint8_t *)calloc(MASK + 1, sizeof(uint8_t));
-  new_block->mem[offset] = (uint8_t) byte;
-  new_block->next = sail_memory;
-  sail_memory = new_block;
+  sail_memory.buffer[address] = byte;
+  sail_memory.mask[address] = true;
 }
 
 uint64_t read_mem(uint64_t address)
 {
-  uint64_t mask = address & ~MASK;
-  uint64_t offset = address & MASK;
-
-  struct block *current = sail_memory;
-
-  while (current != NULL) {
-    if (current->block_id == mask) {
-      return (uint64_t) current->mem[offset];
-    } else {
-      current = current->next;
-    }
-  }
-
-  return 0x00;
+  return sail_memory.buffer[address];
 }
 
 unit write_tag_bool(const uint64_t address, const bool tag)
 {
-  uint64_t mask = address & ~MASK;
-  uint64_t offset = address & MASK;
-
-  struct tag_block *current = sail_tags;
-
-  while (current != NULL) {
-    if (current->block_id == mask) {
-      current->mem[offset] = tag;
-      return UNIT;
-    } else {
-      current = current->next;
-    }
-  }
-
-  /*
-   * If we couldn't find a block matching the mask, allocate a new
-   * one, write the byte, and put it at the front of the block list.
-   */
-  struct tag_block *new_block = (struct tag_block *)malloc(sizeof(struct tag_block));
-  new_block->block_id = mask;
-  new_block->mem = (bool *)calloc(MASK + 1, sizeof(bool));
-  new_block->mem[offset] = tag;
-  new_block->next = sail_tags;
-  sail_tags = new_block;
-
+  sail_tags.buffer[address] = tag;
+  sail_tags.mask[address] = true;
   return UNIT;
 }
 
@@ -234,20 +148,7 @@ unit emulator_write_tag(const uint64_t addr_size, const sbits addr, const bool t
 
 bool read_tag_bool(const uint64_t address)
 {
-  uint64_t mask = address & ~MASK;
-  uint64_t offset = address & MASK;
-
-  struct tag_block *current = sail_tags;
-
-  while (current != NULL) {
-    if (current->block_id == mask) {
-      return current->mem[offset];
-    } else {
-      current = current->next;
-    }
-  }
-
-  return false;
+  return sail_tags.buffer[address];
 }
 
 bool emulator_read_tag(const uint64_t addr_size, const sbits addr)
@@ -257,50 +158,32 @@ bool emulator_read_tag(const uint64_t addr_size, const sbits addr)
 
 void kill_mem()
 {
-  while (sail_memory != NULL) {
-    struct block *next = sail_memory->next;
 
-    free(sail_memory->mem);
-    free(sail_memory);
-
-    sail_memory = next;
-  }
-
-  while (sail_tags != NULL) {
-    struct tag_block *next = sail_tags->next;
-
-    free(sail_tags->mem);
-    free(sail_tags);
-
-    sail_tags = next;
-  }
 }
 
 // ***** Memory builtins *****
 
-bool write_ram(const mpz_t addr_size,     // Either 32 or 64
-	       const mpz_t data_size_mpz, // Number of bytes
+bool write_ram(const sail_int addr_size,     // Either 32 or 64
+	       const sail_int data_size_mpz, // Number of bytes
 	       const lbits hex_ram,       // Currently unused
 	       const lbits addr_bv,
 	       const lbits data)
 {
-  uint64_t addr = mpz_get_ui(*addr_bv.bits);
-  uint64_t data_size = mpz_get_ui(data_size_mpz);
+  uint64_t addr = addr_bv.bits;
+  uint64_t data_size = data_size_mpz;
 
-  mpz_t buf;
-  mpz_init_set(buf, *data.bits);
+  sail_int buf = data.bits;
 
   uint64_t byte;
   for(uint64_t i = 0; i < data_size; ++i) {
     // Take the 8 low bits of buf and write to addr.
-    byte = mpz_get_ui(buf) & 0xFF;
+    byte = buf & 0xFF;
     write_mem(addr + i, byte);
 
     // Then shift buf 8 bits right.
-    mpz_fdiv_q_2exp(buf, buf, 8);
+    buf = buf >> 8;
   }
 
-  mpz_clear(buf);
   return true;
 }
 
@@ -320,77 +203,54 @@ sbits fast_read_ram(const int64_t data_size,
 }
 
 void read_ram(lbits *data,
-	      const mpz_t addr_size,
-	      const mpz_t data_size_mpz,
+	      const sail_int addr_size,
+	      const sail_int data_size_mpz,
 	      const lbits hex_ram,
 	      const lbits addr_bv)
 {
-  uint64_t addr = mpz_get_ui(*addr_bv.bits);
-  uint64_t data_size = mpz_get_ui(data_size_mpz);
+  uint64_t addr = addr_bv.bits;
+  uint64_t data_size = data_size_mpz;
 
-  mpz_set_ui(*data->bits, 0);
+  data->bits = 0;
   data->len = data_size * 8;
 
-  mpz_t byte;
-  mpz_init(byte);
+  sail_int byte = 0;
   for(uint64_t i = data_size; i > 0; --i) {
-    mpz_set_ui(byte, read_mem(addr + (i - 1)));
-    mpz_mul_2exp(*data->bits, *data->bits, 8);
-    mpz_add(*data->bits, *data->bits, byte);
+    byte = read_mem(addr + (i - 1));
+    data->bits = data->bits << 8;
+    data->bits += byte;
   }
-
-  mpz_clear(byte);
 }
 
-void platform_read_mem(lbits *data,
-                       const int read_kind,
-                       const uint64_t addr_size,
-                       const sbits addr,
-                       const mpz_t n)
+lbits platform_read_mem(const int read_kind, 
+                        const int64_t addr_size,
+                        const sbits addr, 
+                        const sail_int n) 
 {
-  sbits sdata;
-  uint64_t len = mpz_get_ui(n); /* Sail type says always >0 */
-  if (len <= 8) {
-    /* fast path for small reads */
-    sdata = fast_read_ram(len, addr.bits);
-    RECREATE_OF(lbits, sbits)(data, sdata, true);
+  if (n <= 8) {
+    return fast_read_ram(n, addr.bits);
   } else {
-    mpz_t mpz_addr_size;
-    mpz_init(mpz_addr_size);
-    mpz_set_ui(mpz_addr_size, addr_size);
-    mpz_t addr_bv;
-    mpz_init(addr_bv);
-    mpz_set_ui(addr_bv, addr.bits);
-    read_ram(data, mpz_addr_size, n, (lbits){.len=0, .bits=NULL}, (lbits){.len=addr.len, .bits=&addr_bv});
-    mpz_clear(mpz_addr_size);
-    mpz_clear(addr_bv);
+    lbits data;
+    read_ram(&data, addr_size, n, (lbits){.len=0, .bits=0}, addr);
+    return data;
   }
 }
 
 unit platform_write_mem_ea(const int write_kind,
-                           const uint64_t addr_size,
+                           const int64_t addr_size,
                            const sbits addr,
-                           const mpz_t n)
+                           const sail_int n)
 {
     return UNIT;
 }
 
 bool platform_write_mem(const int write_kind,
-                        const uint64_t addr_size,
+                        const int64_t addr_size,
                         const sbits addr,
-                        const mpz_t n,
+                        const sail_int n,
                         const lbits data)
 {
-    mpz_t mpz_addr_size;
-    mpz_init(mpz_addr_size);
-    mpz_set_ui(mpz_addr_size, addr_size);
-    mpz_t addr_bv;
-    mpz_init(addr_bv);
-    mpz_set_ui(addr_bv, addr.bits);
-    bool res = write_ram(mpz_addr_size, n, (lbits){.len=0, .bits=NULL}, (lbits){.len=addr.len, .bits=&addr_bv}, data);
-    mpz_clear(mpz_addr_size);
-    mpz_clear(addr_bv);
-    return res;
+  return write_ram(addr_size, n, (lbits){.len=0, .bits=0}, addr, data);
 }
 
 bool platform_excl_res(const unit unit)
@@ -403,41 +263,38 @@ unit platform_barrier()
     return UNIT;
 }
 
-void emulator_read_mem(lbits *data,
-                       const uint64_t addr_size,
-                       const sbits addr,
-                       const mpz_t n)
-{
-  platform_read_mem(data, 0, addr_size, addr, n);
-}
-
-void emulator_read_mem_ifetch(lbits *data,
-                              const uint64_t addr_size,
-                              const sbits addr,
-                              const mpz_t n)
-{
-  platform_read_mem(data, 0, addr_size, addr, n);
-}
-
-void emulator_read_mem_exclusive(lbits *data,
-                                 const uint64_t addr_size,
-                                 const sbits addr,
-                                 const mpz_t n)
-{
-  platform_read_mem(data, 0, addr_size, addr, n);
-}
-
-bool emulator_write_mem(const uint64_t addr_size,
+lbits emulator_read_mem(const int64_t addr_size, 
                         const sbits addr,
-                        const mpz_t n,
+                        const sail_int n) 
+{
+  return platform_read_mem(0, addr_size, addr, n);
+}
+
+lbits emulator_read_mem_ifetch(const int64_t addr_size, 
+                               const sbits addr,
+                               const sail_int n) 
+{
+  return platform_read_mem(0, addr_size, addr, n);
+}
+
+lbits emulator_read_mem_exclusive(const int64_t addr_size, 
+                                  const sbits addr,
+                                  const sail_int n) 
+{
+  return platform_read_mem(0, addr_size, addr, n);
+}
+
+bool emulator_write_mem(const int64_t addr_size,
+                        const sbits addr,
+                        const sail_int n,
                         const lbits data)
 {
   return platform_write_mem(0, addr_size, addr, n, data);
 }
 
-bool emulator_write_mem_exclusive(const uint64_t addr_size,
+bool emulator_write_mem_exclusive(const int64_t addr_size,
                                   const sbits addr,
-                                  const mpz_t n,
+                                  const sail_int n,
                                   const lbits data)
 {
   return platform_write_mem(0, addr_size, addr, n, data);
@@ -534,11 +391,11 @@ void trace_sail_string(const_sail_string str) {
 }
 
 void trace_sail_int(const sail_int op) {
-  if (g_trace_enabled) mpz_out_str(stderr, 10, op);
+  // if (g_trace_enabled) mpz_out_str(stderr, 10, op);
 }
 
 void trace_lbits(const lbits op) {
-  if (g_trace_enabled) fprint_bits("", op, "", stderr);
+  // if (g_trace_enabled) fprint_bits("", op, "", stderr);
 }
 
 void trace_bool(const bool b) {
@@ -592,14 +449,14 @@ void trace_end(void)
 
 /* ***** ELF functions ***** */
 
-void elf_entry(mpz_t *rop, const unit u)
+sail_int elf_entry(const unit u)
 {
-  mpz_set_ui(*rop, g_elf_entry);
+  return g_elf_entry;
 }
 
-void elf_tohost(mpz_t *rop, const unit u)
+sail_int elf_tohost(const unit u)
 {
-  mpz_set_ui(*rop, 0x0ul);
+  return 0x0ul;
 }
 
 /* ***** Cycle limit ***** */
@@ -621,7 +478,7 @@ unit cycle_count(const unit u)
 
 void get_cycle_count(sail_int *rop, const unit u)
 {
-    mpz_set_ui(*rop, g_cycle_count);
+    *rop = g_cycle_count;
 }
 
 /* ***** Argument Parsing ***** */
@@ -633,7 +490,6 @@ static struct option options[] = {
   {"elf",        required_argument, 0, 'e'},
   {"entry",      required_argument, 0, 'n'},
   {"image",      required_argument, 0, 'i'},
-  {"coverage",   required_argument, 0, 'c'},
   {"verbosity",  required_argument, 0, 'v'},
   {"help",       no_argument,       0, 'h'},
   {0, 0, 0, 0}
@@ -657,7 +513,7 @@ int process_arguments(int argc, char *argv[])
 
   while (true) {
     int option_index = 0;
-    c = getopt_long(argc, argv, "e:n:i:b:l:C:c:v:h", options, &option_index);
+    c = getopt_long(argc, argv, "e:n:i:b:l:C:v:h", options, &option_index);
 
     if (c == -1) break;
 
@@ -724,14 +580,6 @@ int process_arguments(int argc, char *argv[])
       }
       break;
 
-    case 'c':
-      if (sail_rts_set_coverage_file != NULL) {
-        sail_rts_set_coverage_file(optarg);
-      } else {
-        fprintf(stderr, "Ignoring flag -c %s. Requires the model to be compiled with coverage\n", optarg);
-      }
-      break;
-
     case 'v':
       if (!sscanf(optarg, "0x%" PRIx64, &g_verbosity)) {
        fprintf(stderr, "Could not parse verbosity flags %s\n", optarg);
@@ -764,13 +612,12 @@ int process_arguments(int argc, char *argv[])
 
 void setup_rts(void)
 {
+  srand(0x0);
   disable_tracing(UNIT);
-  setup_library();
 }
 
 void cleanup_rts(void)
 {
-  cleanup_library();
   kill_mem();
 }
 

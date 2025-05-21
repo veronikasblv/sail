@@ -1878,11 +1878,11 @@ let codegen_vector ctyp =
           c_stmt "return result";
         ]
     in
-    let vector_length =
+    (* let vector_length =
       c_function ~return:"static void"
         (ksprintf string "length_%s(sail_int *rop, %s op)" (sgen_id id) (sgen_id id))
         [c_stmt "mpz_set_ui(*rop, (unsigned long int)(op.len))"]
-    in
+    in *)
     begin
       generated := IdSet.add id !generated;
       separate (twice hardline)
@@ -1897,7 +1897,7 @@ let codegen_vector ctyp =
           vector_set;
           vector_update;
           vector_equal;
-          vector_length;
+          (* vector_length; *)
           internal_vector_update;
           internal_vector_init;
         ]

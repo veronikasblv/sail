@@ -68,17 +68,24 @@
 #ifndef SAIL_H
 #define SAIL_H
 
+#include <stdint.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <gmp.h>
 
 #include <time.h>
+
+#include "sail_failure.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static inline uint64_t sail_bzhi_u64(uint64_t op1, uint64_t op2)
+{
+  return (op1 << (64 - op2)) >> (64 - op2);
+}
 
 static inline void *sail_malloc(size_t size)
 {
@@ -156,9 +163,9 @@ typedef const char *const_sail_string;
 
 SAIL_BUILTIN_TYPE_IMPL(sail_string, const_sail_string)
 
-void dec_str(sail_string *str, const mpz_t n);
-void hex_str(sail_string *str, const mpz_t n);
-void hex_str_upper(sail_string *str, const mpz_t n);
+void dec_str(sail_string *str, const int64_t n);
+void hex_str(sail_string *str, const int64_t n);
+void hex_str_upper(sail_string *str, const int64_t n);
 
 void undefined_string(sail_string *str, const unit u);
 
@@ -168,33 +175,45 @@ bool EQUAL(sail_string)(const_sail_string, const_sail_string);
 void concat_str(sail_string *stro, const_sail_string str1, const_sail_string str2);
 bool string_startswith(const_sail_string s, const_sail_string prefix);
 
-                       
+
 /* ***** Sail integers ***** */
 
 typedef int64_t mach_int;
+#define MACH_INT_MAX INT64_MAX
+#define MACH_INT_MIN INT64_MIN
 
 bool EQUAL(mach_int)(const mach_int, const mach_int);
 
-typedef mpz_t sail_int;
+typedef int64_t sail_int;
+#define SAIL_INT_MAX INT64_MAX
+#define SAIL_INT_MIN INT64_MIN
 
 uint64_t sail_int_get_ui(const sail_int);
 
-#define SAIL_INT_FUNCTION(fname, rtype, ...) void fname(rtype*, __VA_ARGS__)
+#define SAIL_INT_FUNCTION(fname, ...) sail_int fname(__VA_ARGS__)
 
-SAIL_BUILTIN_TYPE(sail_int)
+/* SAIL_BUILTIN_TYPE(sail_int) */
 
-void CREATE_OF(sail_int, mach_int)(sail_int *, const mach_int);
-void RECREATE_OF(sail_int, mach_int)(sail_int *, const mach_int);
+/* void CREATE_OF(sail_int, mach_int)(sail_int *, const mach_int); */
+/* void RECREATE_OF(sail_int, mach_int)(sail_int *, const mach_int); */
 
+/* mach_int CREATE_OF(mach_int, sail_int)(const sail_int); */
+
+/* void CREATE_OF(sail_int, sail_string)(sail_int *, const_sail_string); */
+/* void RECREATE_OF(sail_int, sail_string)(sail_int *, const_sail_string); */
+
+/* void CONVERT_OF(sail_int, sail_string)(sail_int *, const_sail_string); */
+
+/* mach_int CONVERT_OF(mach_int, sail_int)(const sail_int); */
+/* void CONVERT_OF(sail_int, mach_int)(sail_int *, const mach_int); */
+
+SAIL_INT_FUNCTION(CREATE_OF(sail_int, mach_int), const mach_int);
+SAIL_INT_FUNCTION(CREATE_OF(sail_int, sail_string), const_sail_string);
 mach_int CREATE_OF(mach_int, sail_int)(const sail_int);
 
-void CREATE_OF(sail_int, sail_string)(sail_int *, const_sail_string);
-void RECREATE_OF(sail_int, sail_string)(mpz_t *, const_sail_string);
-
-void CONVERT_OF(sail_int, sail_string)(sail_int *, const_sail_string);
-
+SAIL_INT_FUNCTION(CONVERT_OF(sail_int, mach_int), const mach_int);
+SAIL_INT_FUNCTION(CONVERT_OF(sail_int, sail_string), const_sail_string);
 mach_int CONVERT_OF(mach_int, sail_int)(const sail_int);
-void CONVERT_OF(sail_int, mach_int)(sail_int *, const mach_int);
 
 /*
  * Comparison operators for integers
@@ -212,8 +231,8 @@ bool gteq(const sail_int, const sail_int);
  */
 mach_int shl_mach_int(const mach_int, const mach_int);
 mach_int shr_mach_int(const mach_int, const mach_int);
-SAIL_INT_FUNCTION(shl_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(shr_int, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(shl_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(shr_int, const sail_int, const sail_int);
 
 /*
  * undefined_int and undefined_range can't use the UNDEFINED(TYPE)
@@ -221,38 +240,38 @@ SAIL_INT_FUNCTION(shr_int, sail_int, const sail_int, const sail_int);
  * to ensure that no undefined int can violate any type-guaranteed
  * constraints.
  */
-SAIL_INT_FUNCTION(undefined_int, sail_int, const int);
-SAIL_INT_FUNCTION(undefined_nat, sail_int, const unit);
-SAIL_INT_FUNCTION(undefined_range, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(undefined_int, const int);
+SAIL_INT_FUNCTION(undefined_nat, const unit);
+SAIL_INT_FUNCTION(undefined_range, const sail_int, const sail_int);
 
 /*
  * Arithmetic operations in integers. We include functions for both
  * truncating towards zero, and rounding towards -infinity (floor) as
  * fdiv/fmod and tdiv/tmod respectively.
  */
-SAIL_INT_FUNCTION(add_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(sub_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(sub_nat, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(mult_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(ediv_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(emod_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(tdiv_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(tmod_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(fdiv_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(fmod_int, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(add_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(sub_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(sub_nat, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(mult_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(ediv_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(emod_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(tdiv_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(tmod_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(fdiv_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(fmod_int, const sail_int, const sail_int);
 
-SAIL_INT_FUNCTION(max_int, sail_int, const sail_int, const sail_int);
-SAIL_INT_FUNCTION(min_int, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(max_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(min_int, const sail_int, const sail_int);
 
-SAIL_INT_FUNCTION(neg_int, sail_int, const sail_int);
-SAIL_INT_FUNCTION(abs_int, sail_int, const sail_int);
+SAIL_INT_FUNCTION(neg_int, const sail_int);
+SAIL_INT_FUNCTION(abs_int, const sail_int);
 
-SAIL_INT_FUNCTION(pow_int, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(pow_int, const sail_int, const sail_int);
 
-SAIL_INT_FUNCTION(pow2, sail_int, const sail_int);
+SAIL_INT_FUNCTION(pow2, const sail_int);
 
-void make_the_value(sail_int *, const sail_int);
-void size_itself_int(sail_int *, const sail_int);
+/* void make_the_value(sail_int *, const sail_int); */
+/* void size_itself_int(sail_int *, const sail_int); */
 
 /* ***** Sail bitvectors ***** */
 
@@ -273,51 +292,57 @@ typedef struct {
   uint64_t bits;
 } sbits;
 
-typedef struct {
-  mp_bitcnt_t len;
-  mpz_t *bits;
-} lbits;
+typedef sbits lbits;
+
+#define SAIL_BITS_FUNCTION(fname, ...) lbits fname(__VA_ARGS__)
 
 // For backwards compatibility
 typedef uint64_t mach_bits;
 typedef lbits sail_bits;
 
-SAIL_BUILTIN_TYPE(lbits)
 
-void CREATE_OF(lbits, fbits)(lbits *,
-			     const fbits op,
-			     const uint64_t len,
-			     const bool direction);
 
-void RECREATE_OF(lbits, fbits)(lbits *,
-			       const fbits op,
-			       const uint64_t len,
-			       const bool direction);
+/* void CREATE_OF(lbits, fbits)(lbits *, */
+/* 			     const fbits op, */
+/* 			     const uint64_t len, */
+/* 			     const bool direction); */
 
-void CREATE_OF(lbits, sbits)(lbits *,
-			     const sbits op,
-			     const bool direction);
+/* void RECREATE_OF(lbits, fbits)(lbits *, */
+/* 			       const fbits op, */
+/* 			       const uint64_t len, */
+/* 			       const bool direction); */
 
-void RECREATE_OF(lbits, sbits)(lbits *,
-			       const sbits op,
-			       const bool direction);
+/* void CREATE_OF(lbits, sbits)(lbits *, */
+/* 			     const sbits op, */
+/* 			     const bool direction); */
 
-sbits CREATE_OF(sbits, lbits)(const lbits op, const bool direction);
-fbits CREATE_OF(fbits, lbits)(const lbits op, const bool direction);
-sbits CREATE_OF(sbits, fbits)(const fbits op, const uint64_t len, const bool direction);
+/* void RECREATE_OF(lbits, sbits)(lbits *, */
+/* 			       const sbits op, */
+/* 			       const bool direction); */
+
+/* sbits CREATE_OF(sbits, lbits)(const lbits op, const bool direction); */
+/* fbits CREATE_OF(fbits, lbits)(const lbits op, const bool direction); */
+/* sbits CREATE_OF(sbits, fbits)(const fbits op, const uint64_t len, const bool direction); */
 
 /* Bitvector conversions */
 
 fbits CONVERT_OF(fbits, lbits)(const lbits, const bool);
 fbits CONVERT_OF(fbits, sbits)(const sbits, const bool);
 
-void CONVERT_OF(lbits, fbits)(lbits *, const fbits, const uint64_t, const bool);
-void CONVERT_OF(lbits, sbits)(lbits *, const sbits, const bool);
+SAIL_BITS_FUNCTION(CONVERT_OF(lbits, fbits), const fbits, const uint64_t, const bool);
+SAIL_BITS_FUNCTION(CONVERT_OF(lbits, sbits), const sbits, const bool);
 
-sbits CONVERT_OF(sbits, fbits)(const fbits, const uint64_t, const bool);
+static inline sbits CONVERT_OF(sbits, fbits)(const fbits op, const uint64_t len, const bool order)
+{
+     sbits rop;
+     rop.len = len;
+     rop.bits = op;
+     return rop;
+}
+
 sbits CONVERT_OF(sbits, lbits)(const lbits, const bool);
 
-void UNDEFINED(lbits)(lbits *, const sail_int len);
+SAIL_BITS_FUNCTION(UNDEFINED(lbits), const sail_int);
 fbits UNDEFINED(fbits)(const unit);
 
 sbits undefined_sbits(void);
@@ -331,120 +356,102 @@ fbits safe_rshift(const fbits, const fbits);
 /*
  * Used internally to construct large bitvector literals.
  */
-void append_64(lbits *rop, const lbits op, const fbits chunk);
+/* void append_64(lbits *rop, const lbits op, const fbits chunk); */
 
-void add_bits(lbits *rop, const lbits op1, const lbits op2);
-void sub_bits(lbits *rop, const lbits op1, const lbits op2);
+SAIL_BITS_FUNCTION(add_bits, const lbits, const lbits);
+SAIL_BITS_FUNCTION(sub_bits, const lbits, const lbits);
+SAIL_BITS_FUNCTION(add_bits_int, const lbits, const sail_int);
+SAIL_BITS_FUNCTION(sub_bits_int, const lbits, const sail_int);
 
-void add_bits_int(lbits *rop, const lbits op1, const mpz_t op2);
-void sub_bits_int(lbits *rop, const lbits op1, const mpz_t op2);
+SAIL_BITS_FUNCTION(not_bits, const lbits);
+SAIL_BITS_FUNCTION(and_bits, const lbits, const lbits);
+SAIL_BITS_FUNCTION(or_bits, const lbits, const lbits);
+SAIL_BITS_FUNCTION(xor_bits, const lbits, const lbits);
 
-void and_bits(lbits *rop, const lbits op1, const lbits op2);
-void or_bits(lbits *rop, const lbits op1, const lbits op2);
-void xor_bits(lbits *rop, const lbits op1, const lbits op2);
-void not_bits(lbits *rop, const lbits op);
+/* lbits mults_vec(const lbits op1, const lbits op2); */
+/* lbits mult_vec(const lbits op1, const lbits op2); */
 
-void mults_vec(lbits *rop, const lbits op1, const lbits op2);
-void mult_vec(lbits *rop, const lbits op1, const lbits op2);
+SAIL_BITS_FUNCTION(zeros, const sail_int);
 
-void zeros(lbits *rop, const sail_int op);
-
-void zero_extend(lbits *rop, const lbits op, const sail_int len);
+lbits zero_extend(const lbits op, const sail_int len);
 fbits fast_zero_extend(const sbits op, const uint64_t n);
-void sign_extend(lbits *rop, const lbits op, const sail_int len);
+lbits sign_extend(const lbits op, const sail_int len);
 fbits fast_sign_extend(const fbits op, const uint64_t n, const uint64_t m);
 fbits fast_sign_extend2(const sbits op, const uint64_t m);
 
-void length_lbits(sail_int *rop, const lbits op);
-void count_leading_zeros(sail_int *rop, const lbits op);
+SAIL_INT_FUNCTION(length_lbits, const lbits);
+/* sail_int count_leading_zeros(const lbits op); */
 
 bool eq_bits(const lbits op1, const lbits op2);
 bool EQUAL(lbits)(const lbits op1, const lbits op2);
 bool EQUAL(ref_lbits)(const lbits *op1, const lbits *op2);
 bool neq_bits(const lbits op1, const lbits op2);
 
-void vector_subrange_lbits(lbits *rop,
-                           const lbits op,
-                           const sail_int n_mpz,
-                           const sail_int m_mpz);
+SAIL_BITS_FUNCTION(vector_subrange_lbits, const lbits op, const sail_int n, const sail_int m);
 
-void vector_subrange_inc_lbits(lbits *rop,
-			       const lbits op,
-			       const sail_int n_mpz,
-			       const sail_int m_mpz);
-                     
-void sail_truncate(lbits *rop, const lbits op, const sail_int len);
-void sail_truncateLSB(lbits *rop, const lbits op, const sail_int len);
+lbits vector_subrange_inc_lbits(const lbits op, const sail_int n,
+                                const sail_int m);
 
-fbits bitvector_access(const lbits op, const sail_int n_mpz);
-fbits bitvector_access_inc(const lbits op, const sail_int n_mpz);
+lbits sail_truncate(const lbits op, const sail_int len);
+/* lbits sail_truncateLSB(const lbits op, const sail_int len); */
+
+fbits bitvector_access(const lbits op, const sail_int n);
+/* fbits bitvector_access_inc(const lbits op, const sail_int n); */
 
 fbits update_fbits(const fbits op, const uint64_t n, const fbits bit);
 
-void sail_unsigned(sail_int *rop, const lbits op);
-void sail_signed(sail_int *rop, const lbits op);
+SAIL_INT_FUNCTION(sail_signed, const lbits op);
+SAIL_INT_FUNCTION(sail_unsigned, const lbits op);
 
 mach_int fast_signed(const fbits, const uint64_t);
 mach_int fast_unsigned(const fbits);
 
-void append(lbits *rop, const lbits op1, const lbits op2);
+SAIL_BITS_FUNCTION(append, const lbits, const lbits);
 
 sbits append_sf(const sbits, const fbits, const uint64_t);
 sbits append_fs(const fbits, const uint64_t, const sbits);
 sbits append_ss(const sbits, const sbits);
 
-void replicate_bits(lbits *rop, const lbits op1, const sail_int op2);
+SAIL_BITS_FUNCTION(replicate_bits, const lbits op, const sail_int n);
 fbits fast_replicate_bits(const fbits shift, const fbits v, const mach_int times);
 
-void get_slice_int(lbits *rop, const sail_int len_mpz, const sail_int n, const sail_int start_mpz);
+SAIL_BITS_FUNCTION(get_slice_int, const sail_int len, const sail_int n, const sail_int start);
 
-void set_slice_int(sail_int *rop,
-		   const sail_int len_mpz,
-		   const sail_int n,
-		   const sail_int start_mpz,
-		   const lbits slice);
+SAIL_INT_FUNCTION(set_slice_int, const sail_int len, const sail_int n, const sail_int start, const lbits slice);
 
-void update_lbits(lbits *rop, const lbits op, const sail_int n_mpz, const uint64_t bit);
-void update_lbits_inc(lbits *rop, const lbits op, const sail_int n_mpz, const uint64_t bit);
+lbits update_lbits(const lbits op, const sail_int n, const uint64_t bit);
+/* void update_lbits_inc(lbits *rop, const lbits op, const sail_int n_mpz, const uint64_t bit); */
 
-void vector_update_subrange_lbits(lbits *rop,
-                                  const lbits op,
-                                  const sail_int n_mpz,
-                                  const sail_int m_mpz,
-                                  const lbits slice);
+SAIL_BITS_FUNCTION(vector_update_subrange_lbits, const lbits op, const sail_int n, const sail_int m, const lbits slice);
 
-void vector_update_subrange_inc_lbits(lbits *rop,
-				      const lbits op,
-				      const sail_int n_mpz,
-				      const sail_int m_mpz,
-				      const lbits slice);
+/* void vector_update_subrange_inc_lbits(lbits *rop, */
+/* 				      const lbits op, */
+/* 				      const sail_int n_mpz, */
+/* 				      const sail_int m_mpz, */
+/* 				      const lbits slice); */
 
 fbits fast_update_subrange(const fbits op,
 			   const mach_int n,
 			   const mach_int m,
 			   const fbits slice);
 
-void slice(lbits *rop, const lbits op, const sail_int start_mpz, const sail_int len_mpz);
-void slice_inc(lbits *rop, const lbits op, const sail_int start_mpz, const sail_int len_mpz);
+SAIL_BITS_FUNCTION(slice, const lbits, const sail_int, const sail_int);
+
+/* void slice_inc(lbits *rop, const lbits op, const sail_int start_mpz, const sail_int len_mpz); */
 
 sbits sslice(const fbits op, const mach_int start, const mach_int len);
 
-void set_slice(lbits *rop,
-	       const sail_int len_mpz,
-	       const sail_int slen_mpz,
-	       const lbits op,
-	       const sail_int start_mpz,
-	       const lbits slice);
+SAIL_BITS_FUNCTION(set_slice, const sail_int len, const sail_int slen, const lbits op, const sail_int start, const lbits slice);
 
-void shift_bits_left(lbits *rop, const lbits op1, const lbits op2);
-void shift_bits_right(lbits *rop, const lbits op1, const lbits op2);
-void shift_bits_right_arith(lbits *rop, const lbits op1, const lbits op2);
+lbits shift_bits_left(const lbits op1, const lbits op2);
+lbits shift_bits_right(const lbits op1, const lbits op2);
+/* lbits shift_bits_right_arith(const lbits op1, const lbits op2); */
 
-void shiftl(lbits *rop, const lbits op1, const sail_int op2);
-void shiftr(lbits *rop, const lbits op1, const sail_int op2);
-void arith_shiftr(lbits *rop, const lbits op1, const sail_int op2);
+lbits shiftl(const lbits op1, const sail_int op2);
+lbits shiftr(const lbits op1, const sail_int op2);
+/* lbits arith_shiftr(const lbits op1, const sail_int op2); */
 
-void reverse_endianness(lbits*, lbits);
+lbits reverse_endianness(lbits);
 
 bool eq_sbits(const sbits op1, const sbits op2);
 bool neq_sbits(const sbits op1, const sbits op2);
@@ -457,12 +464,12 @@ sbits sub_sbits(const sbits op1, const sbits op2);
 
 /* ***** Sail reals ***** */
 
-typedef mpq_t real;
+typedef double real;
 
 SAIL_BUILTIN_TYPE(real)
 
-void CREATE_OF(real, sail_string)(real *rop, const_sail_string op);
-void CONVERT_OF(real, sail_string)(real *rop, const_sail_string op);
+/* void CREATE_OF(real, sail_string)(real *rop, const_sail_string op); */
+/* void CONVERT_OF(real, sail_string)(real *rop, const_sail_string op); */
 
 void UNDEFINED(real)(real *rop, unit u);
 
@@ -476,8 +483,8 @@ void div_real(real *rop, const real op1, const real op2);
 void sqrt_real(real *rop, const real op);
 void abs_real(real *rop, const real op);
 
-void round_up(sail_int *rop, const real op);
-void round_down(sail_int *rop, const real op);
+SAIL_INT_FUNCTION(round_up, const real op);
+SAIL_INT_FUNCTION(round_down, const real op);
 
 void to_real(real *rop, const sail_int op);
 
@@ -488,16 +495,16 @@ bool gt_real(const real op1, const real op2);
 bool lteq_real(const real op1, const real op2);
 bool gteq_real(const real op1, const real op2);
 
-void real_power(real *rop, const real base, const sail_int exp);
+/* void real_power(real *rop, const real base, const sail_int exp); */
 
-unit print_real(const_sail_string, const real);
-unit prerr_real(const_sail_string, const real);
+/* unit print_real(const_sail_string, const real); */
+/* unit prerr_real(const_sail_string, const real); */
 
-void random_real(real *rop, unit);
+/* void random_real(real *rop, unit); */
 
 /* ***** String utilities ***** */
 
-void string_length(sail_int *len, const_sail_string s);
+sail_int string_length(const_sail_string s);
 void string_drop(sail_string *dst, const_sail_string s, sail_int len);
 void string_take(sail_string *dst, const_sail_string s, sail_int len);
 
@@ -512,9 +519,9 @@ void decimal_string_of_fbits(sail_string *str, const fbits op);
 
 /* ***** Mapping support ***** */
 
-void parse_hex_bits(lbits *stro, const mpz_t n, const_sail_string str);
+/* lbits parse_hex_bits(const sail_int n, const_sail_string str); */
 
-bool valid_hex_bits(const mpz_t n, const_sail_string str);
+/* bool valid_hex_bits(const sail_int n, const_sail_string str); */
 
 /*
  * Utility function not callable from Sail!
@@ -540,11 +547,11 @@ unit sail_putchar(const sail_int op);
 
 /* ***** Misc ***** */
 
-void get_time_ns(sail_int*, const unit);
+sail_int get_time_ns(const unit);
 
 /* ***** ARM optimisations ***** */
 
-void arm_align(lbits *, const lbits, const sail_int);
+/* lbits arm_align(const lbits, const sail_int); */
 
 #ifdef __cplusplus
 }
